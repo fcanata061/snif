@@ -1,0 +1,2 @@
+# snif
+Gerenciador de programas 
