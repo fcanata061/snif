@@ -1,0 +1,211 @@
+=====================================================================
+             MANUAL COMPLETO DO GERENCIADOR DE PACOTES
+                       lfs-pm.sh (Linux From Scratch)
+=====================================================================
+
+ÍNDICE:
+  1. Estrutura de diretórios do repositório
+  2. Variáveis suportadas nas recipes
+  3. Configuração inicial e ambiente
+  4. Comandos do lfs-pm.sh
+  5. Toolchain completo (passo 1 e 2)
+  6. Exemplos de recipes
+     - GNU clássico (gzip)
+     - CMake (CMake)
+     - Firefox (mach/rust)
+  7. Fluxo de uso típico
+  8. Manutenção: upgrade, órfãos, revdep, rebuild-world
+=====================================================================
+
+---------------------------------------------------------------------
+1. ESTRUTURA DE DIRETÓRIOS
+---------------------------------------------------------------------
+
+O repositório de receitas ($REPO) deve seguir a organização:
+
+$REPO/
+ ├─ base/                # Toolchain e pacotes essenciais
+ │   ├─ binutils/
+ │   │   ├─ binutils-pass1-2.39/recipe
+ │   │   └─ binutils-2.39/recipe
+ │   ├─ gcc/
+ │   │   ├─ gcc-pass1-12.2.0/recipe
+ │   │   ├─ gcc-pass2-12.2.0/recipe
+ │   │   └─ gcc-12.2.0/recipe
+ │   ├─ glibc/glibc-2.36/recipe
+ │   └─ linux-headers/linux-6.1.1/recipe
+ ├─ x11/                 # X.Org, drivers, libs gráficas
+ ├─ desktop/             # Aplicativos desktop (firefox, vlc, etc.)
+ └─ extras/              # Outros pacotes
+
+Cada pacote possui uma versão, e dentro dela, um arquivo `recipe`.
+
+---------------------------------------------------------------------
+2. VARIÁVEIS SUPORTADAS EM UMA RECIPE
+---------------------------------------------------------------------
+
+As recipes são scripts POSIX que definem variáveis.
+
+- PKG_NAME            : Nome do pacote
+- PKG_VERSION         : Versão
+- PKG_RELEASE         : Release (incrementa se patch aplicado)
+- PKG_DESC            : Descrição
+- PKG_LICENSE         : Licença
+- PKG_DEPENDS         : Lista de dependências (espaço separado)
+- PKG_SOURCE_URLS     : URLs de origem (tarballs, git, etc.)
+- PKG_BUILD_SUBDIR    : Diretório de build (ex: build, obj-build)
+- PKG_CONFIGURE_CMD   : Comando de configuração (default: ./configure $PKG_CONFIGURE_OPTS)
+- PKG_CONFIGURE_OPTS  : Opções extras de configuração
+- PKG_BUILD_CMD       : Comando de compilação (default: make $PKG_MAKE_OPTS)
+- PKG_MAKE_OPTS       : Opções de make (default: -j$JOBS)
+- PKG_INSTALL_CMD     : Comando de instalação (default: make DESTDIR=$DESTDIR install)
+
+Obs: Se variáveis não forem definidas, o lfs-pm.sh assume os valores padrão.
+
+---------------------------------------------------------------------
+3. CONFIGURAÇÃO INICIAL E AMBIENTE
+---------------------------------------------------------------------
+
+Variáveis globais:
+
+- $REPO       : Diretório raiz das recipes
+- $BUILD_DIR  : Diretório temporário de compilação
+- $LOG_DIR    : Diretório de logs
+- $DB_DIR     : Banco de dados dos pacotes instalados
+- $JOBS       : Número de jobs para compilação paralela
+
+Antes de usar:
+  export REPO=/path/do/repo
+  export BUILD_DIR=/var/build
+  export LOG_DIR=/var/log/lfs-pm
+  export DB_DIR=/var/lib/lfs-pm
+  export JOBS=$(nproc)
+
+---------------------------------------------------------------------
+4. COMANDOS DO lfs-pm.sh
+---------------------------------------------------------------------
+
+- build <recipe>              : compila o pacote sem instalar
+- install <recipe>            : compila e instala o pacote
+- install-deps <recipe>       : resolve dependências e instala tudo
+- remove <pkg>                : remove pacote, desfazendo instalação
+- orphans                     : lista pacotes órfãos
+- revdep                      : verifica libs quebradas e recompila
+- rebuild-world               : recompila todo o sistema em ordem
+- info <pkg>                  : mostra informações do pacote
+- list-installed              : lista pacotes instalados
+- sync                        : sincroniza com repositório git
+- upgrade <pkg>               : atualiza para versão mais nova
+- upgrade --force <pkg>       : força atualização
+
+---------------------------------------------------------------------
+5. TOOLCHAIN COMPLETO
+---------------------------------------------------------------------
+
+A construção segue a ordem LFS tradicional:
+
+PASSO 1 (compilador temporário):
+  - binutils-pass1
+  - gcc-pass1
+  - linux-headers
+  - glibc
+  - libstdc++
+
+PASSO 2 (toolchain ajustado):
+  - binutils-pass2
+  - gcc-pass2
+
+Cada um tem sua recipe específica:
+Exemplo: base/gcc/gcc-pass1-12.2.0/recipe
+
+---------------------------------------------------------------------
+6. EXEMPLOS DE RECIPES
+---------------------------------------------------------------------
+
+6.1 GNU clássico (gzip)
+-----------------------
+
+PKG_NAME="gzip"
+PKG_VERSION="1.13"
+PKG_DESC="GNU Gzip compression utility"
+PKG_LICENSE="GPL-3.0"
+PKG_DEPENDS=""
+PKG_SOURCE_URLS="https://ftp.gnu.org/gnu/gzip/gzip-${PKG_VERSION}.tar.xz"
+
+# default configure/make/install já funciona
+
+6.2 CMake
+---------
+
+PKG_NAME="cmake"
+PKG_VERSION="3.27.1"
+PKG_DESC="Cross-platform build system"
+PKG_LICENSE="BSD"
+PKG_DEPENDS="ncurses"
+PKG_SOURCE_URLS="https://cmake.org/files/v3.27/cmake-${PKG_VERSION}.tar.gz"
+
+PKG_BUILD_SUBDIR="build"
+PKG_CONFIGURE_CMD="../bootstrap --prefix=/usr"
+PKG_BUILD_CMD="make -j${JOBS}"
+PKG_INSTALL_CMD="make install DESTDIR=$DESTDIR"
+
+6.3 Firefox
+-----------
+
+PKG_NAME="firefox"
+PKG_VERSION="117.0"
+PKG_DESC="Mozilla Firefox Browser"
+PKG_LICENSE="MPL-2.0"
+PKG_DEPENDS="gtk3 dbus dbus-glib libffi libpng freetype fontconfig cairo pango
+glib2 zlib icu python3 rustc cargo llvm clang nodejs yasm unzip zip
+alsa-lib pulseaudio libevent nspr nss"
+PKG_SOURCE_URLS="https://archive.mozilla.org/pub/firefox/releases/${PKG_VERSION}/source/firefox-${PKG_VERSION}.source.tar.xz"
+
+PKG_BUILD_SUBDIR="obj-build"
+PKG_CONFIGURE_OPTS="--prefix=/usr --disable-tests --disable-crashreporter
+--disable-updater --enable-default-toolkit=cairo-gtk3
+--enable-release --with-system-nss --with-system-nspr
+--with-system-zlib --with-system-icu --with-system-png"
+
+PKG_BUILD_CMD="./mach build"
+PKG_INSTALL_CMD="./mach install DESTDIR=$DESTDIR"
+
+---------------------------------------------------------------------
+7. FLUXO DE USO TÍPICO
+---------------------------------------------------------------------
+
+1. Criar recipe em $REPO/base/gcc/gcc-12.2.0/recipe
+2. Rodar:
+   ./lfs-pm.sh install-deps base/gcc/gcc-12.2.0
+3. O gerenciador:
+   - resolve dependências
+   - baixa fontes
+   - compila em ordem
+   - instala em DESTDIR
+   - registra manifest e log
+4. Consultar:
+   ./lfs-pm.sh info gcc
+
+---------------------------------------------------------------------
+8. MANUTENÇÃO
+---------------------------------------------------------------------
+
+- Remover órfãos:
+   ./lfs-pm.sh orphans
+
+- Rebuild de libs quebradas:
+   ./lfs-pm.sh revdep
+
+- Recompilar todo o sistema:
+   ./lfs-pm.sh rebuild-world
+
+- Atualizar pacotes:
+   ./lfs-pm.sh upgrade <pkg>
+   ./lfs-pm.sh upgrade --force <pkg>
+
+- Sincronizar repositório git:
+   ./lfs-pm.sh sync
+
+=====================================================================
+FIM DO MANUAL
+=====================================================================
